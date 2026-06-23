@@ -50,11 +50,11 @@ class GestureValidator:
         
         return None, min_distance
 
-    def check_dynamic_start(self, current_angles):
-        """Verifica si la mano está en la posición base con mayor tolerancia."""
+    def check_dynamic_start(self, current_angles, current_orientation):
+        """Verifica si la mano está en la posición base de una seña dinámica respetando su orientación."""
         possible_starts = []
-        # Le damos +15 de tolerancia porque al empezar a mover la mano, los ángulos se deforman un poco
-        start_threshold = self.threshold_static + 15.0 
+        # Quitamos el +15.0 de tolerancia para volverlo estricto y evitar que se dispare por accidente
+        start_threshold = self.threshold_static 
         
         for key, data in self.gestures.items():
             if data.get("tipo") == "dinamica":
@@ -62,19 +62,37 @@ class GestureValidator:
                 current = np.array(current_angles)
                 distance = np.linalg.norm(saved_base - current)
                 
+                # --- NUEVA LÓGICA: Validar rotación antes de empezar a grabar ---
+                saved_ori = data.get("orientacion")
+                if saved_ori is not None:
+                    ori_diff = abs(current_orientation - saved_ori)
+                    if ori_diff > 180: 
+                        ori_diff = 360 - ori_diff
+                    
+                    # Si la mano está girada más de 45 grados de como se grabó la Z, se cancela
+                    if ori_diff > 45:
+                        distance += 1000 
+                # ----------------------------------------------------------------
+                
                 if distance <= start_threshold:
                     possible_starts.append(key.rstrip('0123456789'))
                     
-        return list(set(possible_starts))
+        return list(set(possible_starts))   
 
     def validate_trajectory(self, letter, path_x, path_y):
-        """Valida el movimiento basándose en el Desplazamiento Neto (Punto final vs Punto inicial)."""
+        """Valida el movimiento exigiendo una distancia mínima de recorrido para evitar falsos positivos."""
         if len(path_x) < 15: 
             return False 
 
-        # Cuánto se movió el usuario en total
         user_dx = path_x[-1] - path_x[0]
         user_dy = path_y[-1] - path_y[0]
+        
+        # Calcular la distancia real total que recorrió tu mano (Fórmula de la hipotenusa)
+        total_distance = (user_dx**2 + user_dy**2)**0.5
+        
+        # REGLA ESTRICTA: El movimiento debe ser grande (> 15% de la pantalla)
+        if total_distance < 0.15:
+            return False
 
         for key, data in self.gestures.items():
             clean_key = key.rstrip('0123456789')
@@ -84,26 +102,21 @@ class GestureValidator:
                 
                 if len(exp_x) < 15: continue
                 
-                # Cuánto se movió la mano en la grabación original
                 exp_dx = exp_x[-1] - exp_x[0]
                 exp_dy = exp_y[-1] - exp_y[0]
 
-                # Validar el eje X (Derecha/Izquierda)
                 match_x = False
-                if abs(exp_dx) > 0.05: # Si en la grabación hubo un movimiento claro en X
-                    # Multiplicar signos para asegurar que van en la misma dirección
-                    match_x = (user_dx * exp_dx) > 0 and abs(user_dx) > 0.02
-                else: # Si era un movimiento vertical, permitimos un pequeño error en X
-                    match_x = abs(user_dx) < 0.08 
+                if abs(exp_dx) > 0.05:
+                    match_x = (user_dx * exp_dx) > 0 and abs(user_dx) > 0.10
+                else:
+                    match_x = abs(user_dx) < 0.10 
                     
-                # Validar el eje Y (Arriba/Abajo)
                 match_y = False
                 if abs(exp_dy) > 0.05: 
-                    match_y = (user_dy * exp_dy) > 0 and abs(user_dy) > 0.02
+                    match_y = (user_dy * exp_dy) > 0 and abs(user_dy) > 0.10
                 else:
-                    match_y = abs(user_dy) < 0.08
+                    match_y = abs(user_dy) < 0.10
 
-                # Si el movimiento general coincide, la seña es válida
                 if match_x and match_y:
                     return True
                     

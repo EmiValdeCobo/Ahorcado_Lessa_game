@@ -70,3 +70,24 @@ def get_hand_orientation(landmarks):
     angle = np.degrees(np.arctan2(dy, dx))
     
     return round(angle, 2)
+
+def get_finger_spread(landmarks):
+    """
+    Calcula la distancia normalizada entre la punta del índice y el dedo medio.
+    Sirve para diferenciar letras como la U (dedos juntos) y la V (dedos separados).
+    """
+    index_tip = np.array([landmarks[8].x, landmarks[8].y, landmarks[8].z])
+    middle_tip = np.array([landmarks[12].x, landmarks[12].y, landmarks[12].z])
+    
+    # Usamos la palma como referencia de escala (distancia de la muñeca a la base del dedo medio)
+    palm_base = np.array([landmarks[0].x, landmarks[0].y, landmarks[0].z])
+    palm_top = np.array([landmarks[9].x, landmarks[9].y, landmarks[9].z])
+    
+    spread_dist = np.linalg.norm(index_tip - middle_tip)
+    palm_size = np.linalg.norm(palm_top - palm_base)
+    
+    # Evitar división por cero
+    if palm_size == 0:
+        return 0
+        
+    return spread_dist / palm_size
