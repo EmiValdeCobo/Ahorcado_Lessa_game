@@ -10,7 +10,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ui_native.hangman_renderer import HangmanRenderer
 from validator import GestureValidator
-from math_utils import get_hand_angles
+from math_utils import get_hand_angles, get_hand_orientation
 
 class LessaGameEngine:
     def __init__(self):
@@ -36,9 +36,12 @@ class LessaGameEngine:
             [150, 220, 490, 300, "Juego: Ahorcado", "AHORCADO"],
             [150, 340, 490, 420, "Salir del Programa", "SALIR"]
         ]
+        # Memoria para señas dinámicas
+        self.dynamic_lock_frames = 0
+        self.last_dynamic_letter = None
 
     def vision_worker(self):
-        """HILO SECUNDARIO: Solo procesa cámara y matemáticas."""
+        """HILO SECUNDARIO: Procesa cámara, matemáticas y rotación global."""
         cap = cv2.VideoCapture(0)
         validator = GestureValidator(json_path='../data/gestures.json')
         mp_hands = mp.solutions.hands
@@ -48,6 +51,7 @@ class LessaGameEngine:
         dynamic_frames = 0
         dynamic_target = None
         path_x, path_y = [], []
+        missing_frames = 0
 
         while self.running:
             success, frame = cap.read()
@@ -61,35 +65,69 @@ class LessaGameEngine:
             landmarks_list = None
 
             if results.multi_hand_landmarks:
+                missing_frames = 0 # Reiniciar contador porque vimos la mano
                 hand_landmarks = results.multi_hand_landmarks[0]
                 landmarks_list = hand_landmarks
+                
+                # Extraer ángulos y orientación
                 current_angles = get_hand_angles(hand_landmarks.landmark)
+                # OJO: Asegúrate de tener get_hand_orientation en tu math_utils.py como configuramos para la U/H
+                current_orientation = get_hand_orientation(hand_landmarks.landmark) 
                 
-                clean_letter, distance = validator.recognize_static(current_angles)
+                # 1. Evaluar letra estática
+                clean_letter, distance = validator.recognize_static(current_angles, current_orientation)
+                detected_letter = clean_letter
                 
-                if clean_letter:
-                    detected_letter = clean_letter
-                    recording_dynamic = False
-                else:
-                    if not recording_dynamic:
-                        possible_starts = validator.check_dynamic_start(current_angles)
-                        if possible_starts:
-                            recording_dynamic, dynamic_frames = True, 0
-                            dynamic_target = possible_starts[0]
-                            path_x, path_y = [], []
+                # 2. SIEMPRE evaluar si es el inicio de una dinámica, incluso si ya detectó una estática
+                possible_starts = validator.check_dynamic_start(current_angles)
+                
+                # Solo iniciamos una nueva grabación si no hay una letra dinámica congelada
+                if possible_starts and not recording_dynamic and self.dynamic_lock_frames == 0:
+                    recording_dynamic = True
+                    dynamic_frames = 0
+                    dynamic_target = possible_starts[0]
+                    path_x, path_y = [], []
                     
-                    if recording_dynamic:
-                        wrist = hand_landmarks.landmark[0]
-                        path_x.append(round(wrist.x, 3))
-                        path_y.append(round(wrist.y, 3))
-                        dynamic_frames += 1
+                # 3. Lógica de trazado
+                if recording_dynamic:
+                    index_tip = hand_landmarks.landmark[8]
+                    path_x.append(round(index_tip.x, 3))
+                    path_y.append(round(index_tip.y, 3))
+                    dynamic_frames += 1
+                    
+                    if clean_letter:
+                        detected_letter = f"{clean_letter} (Trazando {dynamic_target}...)"
+                    else:
                         detected_letter = f"Trazando {dynamic_target}..."
 
-                        if dynamic_frames >= 30:
-                            if validator.validate_trajectory(dynamic_target, path_x, path_y):
-                                detected_letter = dynamic_target
-                            recording_dynamic = False
+                    if dynamic_frames >= 60:
+                        if validator.validate_trajectory(dynamic_target, path_x, path_y):
+                            self.last_dynamic_letter = dynamic_target
+                            self.dynamic_lock_frames = 30 
+                        recording_dynamic = False
+                        
+                if self.dynamic_lock_frames > 0:
+                    detected_letter = self.last_dynamic_letter
+                    self.dynamic_lock_frames -= 1
+                    recording_dynamic = False
+            else:
+                # NUEVA LÓGICA: Si no hay mano, aumentar el contador de pérdida
+                missing_frames += 1
+                
+                # Mantener el texto en pantalla para que no parpadee
+                if recording_dynamic:
+                    detected_letter = f"Trazando {dynamic_target}..."
+                elif self.dynamic_lock_frames > 0:
+                    detected_letter = self.last_dynamic_letter
+                    self.dynamic_lock_frames -= 1
+                
+                # Si la mano desaparece por más de 15 frames (~0.5 segundos), abortar
+                if missing_frames > 15:
+                    recording_dynamic = False
+                    dynamic_frames = 0
+                    path_x, path_y = [], []
 
+            # Enviar datos a la cola de la interfaz
             if not self.data_queue.empty():
                 try: self.data_queue.get_nowait()
                 except queue.Empty: pass

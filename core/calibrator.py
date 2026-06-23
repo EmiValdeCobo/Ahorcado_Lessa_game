@@ -2,7 +2,7 @@ import cv2
 import mediapipe as mp
 import json
 import os
-from math_utils import get_hand_angles
+from math_utils import get_hand_angles, get_hand_orientation
 
 # Configuración de MediaPipe
 mp_hands = mp.solutions.hands
@@ -39,13 +39,14 @@ def run_calibrator():
     
     print("\n--- MODO CALIBRACIÓN INICIADO ---")
     print("1. Haz una seña frente a la cámara.")
-    print("2. Presiona la tecla 'C' para capturarla.")
-    print("3. Presiona 'Q' para salir.\n")
+    print("2. Presiona la tecla 'C' para capturarla (ESTÁTICA).")
+    print("3. Presiona la tecla 'M' para capturarla (DINÁMICA).")
+    print("4. Presiona 'Q' para salir.\n")
 
     # Nuevas variables de estado para grabar movimiento antes del while
     recording_dynamic = False
     frames_recorded = 0
-    max_frames = 30 # ~1 segundo de video a 30fps
+    max_frames = 60 # ~2 segundos de video para señas dinámicas
     dynamic_base_angles = []
     dynamic_path_x = []
     dynamic_path_y = []
@@ -59,18 +60,23 @@ def run_calibrator():
         results = hands.process(image_rgb)
 
         current_angles = []
+        current_orientation = 0
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                
                 current_angles = get_hand_angles(hand_landmarks.landmark)
+                current_orientation = get_hand_orientation(hand_landmarks.landmark)
 
                 # Lógica si estamos grabando una seña con movimiento
                 if recording_dynamic:
                     # El punto 8 es la punta del dedo índice
-                    wrist = hand_landmarks.landmark[0]
-                    dynamic_path_x.append(round(wrist.x, 3))
-                    dynamic_path_y.append(round(wrist.y, 3))
+                    index_tip = hand_landmarks.landmark[8]
+                    
+                    # ¡AQUÍ ESTABA EL ERROR! (Cambiado de path_x a dynamic_path_x)
+                    dynamic_path_x.append(round(index_tip.x, 3))
+                    dynamic_path_y.append(round(index_tip.y, 3))
                     frames_recorded += 1
 
                     # Mostrar progreso en pantalla
@@ -88,7 +94,8 @@ def run_calibrator():
                                 "tipo": "dinamica",
                                 "angulos_base": dynamic_base_angles,
                                 "trayectoria_x": dynamic_path_x,
-                                "trayectoria_y": dynamic_path_y
+                                "trayectoria_y": dynamic_path_y,
+                                "orientacion": current_orientation
                             }
                             save_gesture(gestures)
 
@@ -106,14 +113,15 @@ def run_calibrator():
                 if letter:
                     gestures[letter] = {
                         "tipo": "estatica",
-                        "angulos": current_angles
+                        "angulos": current_angles,
+                        "orientacion": current_orientation
                     }
                     save_gesture(gestures)
 
         # Iniciar captura DINÁMICA
         elif key == ord('m') and not recording_dynamic:
             if current_angles:
-                print("\n Grabando movimiento...")
+                print("\n🔴 Grabando movimiento...")
                 recording_dynamic = True
                 frames_recorded = 0
                 dynamic_base_angles = current_angles

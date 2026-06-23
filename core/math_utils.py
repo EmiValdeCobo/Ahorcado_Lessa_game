@@ -53,3 +53,20 @@ def get_hand_angles(landmarks):
         angles.append(round(angle, 2))
         
     return angles
+
+def get_hand_orientation(landmarks):
+    """
+    Calcula la inclinación global de la mano en la pantalla (en grados).
+    Usa el vector desde la muñeca (0) hasta el nudillo del dedo medio (9).
+    """
+    wrist = landmarks[0]
+    middle_mcp = landmarks[9]
+    
+    # Delta Y y Delta X
+    dy = middle_mcp.y - wrist.y
+    dx = middle_mcp.x - wrist.x
+    
+    # arctan2 maneja correctamente los cuadrantes
+    angle = np.degrees(np.arctan2(dy, dx))
+    
+    return round(angle, 2)
