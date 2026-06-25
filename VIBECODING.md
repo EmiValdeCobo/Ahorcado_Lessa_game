@@ -1,7 +1,5 @@
 # Documentación de Vibecoding y Proceso de Desarrollo
 
-**Autor:** Emiliano Valdés
-
 ## 2. Evidencia de vibecoding (prompts)
 
 Durante el desarrollo de este proyecto, se utilizó una metodología de interacción constante con la IA para resolver problemas de lógica, geometría espacial, UI y compilación. A continuación, se documentan los prompts clave utilizados en orden cronológico:
