@@ -46,7 +46,7 @@ def run_calibrator():
     # Nuevas variables de estado para grabar movimiento antes del while
     recording_dynamic = False
     frames_recorded = 0
-    max_frames = 60 # ~2 segundos de video para señas dinámicas
+    max_frames = 30 # ~2 segundos de video para señas dinámicas
     dynamic_base_angles = []
     dynamic_path_x = []
     dynamic_path_y = []

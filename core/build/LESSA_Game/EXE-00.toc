@@ -73,7 +73,7 @@
  [],
  False,
  False,
- 1782189502,
+ 1782626696,
  [('runw.exe',
    'C:\\Users\\emili\\OneDrive\\Desktop\\lessa_game\\venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
    'EXECUTABLE')],
